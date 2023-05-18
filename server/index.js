@@ -34,10 +34,10 @@ io.on("connection", (socket) => {
   //
   console.log("누군가 접속함", socket.id);
   socket.emit("message", " 환영합니당 ");
-  socket.emit("status", matrixGenerator(10));
+  socket.emit("status", matrixGenerator(12,12));
 
   statusInterval = setInterval(() => {
-    socket.emit("status", matrixGenerator(10));
+    socket.emit("status", matrixGenerator(12,12));
   }, 1000);
 
   socket.on("message", (msg) => {
