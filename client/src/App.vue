@@ -1,131 +1,85 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
-import ColorParser from "./utils/colorParser";
+import { onMounted, ref } from "vue";
 import { io } from "socket.io-client";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import Matrix3DGraph from "./components/Matrix3DGraph.vue";
+import { dummyData } from "./dummyMatrix";
 
 const _socketPort = 3001;
 
 const socket = ref();
-const matrix = ref<number[][]>([
-  [1, 2],
-  [1, 2],
-]);
-const canvasRef = ref<HTMLElement | null>(null);
 
 const useSocket = (url: string) => {
   const socket = io(url);
   return socket;
 };
-
-onMounted(() => {
-  if (!canvasRef.value) {
-    return;
-  }
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
-  // 렌더러설정
-  const renderer = new THREE.WebGLRenderer();
-  canvasRef.value.appendChild(renderer.domElement);
-  renderer.setSize(340, 340);
-
-  let cubes: THREE.Mesh[] = [];
-
-  const createCube = () => {
-    const cubeSize = 2;
-    if (matrix.value) {
-      matrix.value.map((row, rowIndex) => {
-        row.map((col, colIndex) => {
-          const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-
-          const material = new THREE.MeshBasicMaterial({
-            color: ColorParser(col),
-          });
-          // const material = new THREE.MeshStandardMaterial({
-          //   color: new THREE.Color().setStyle(ColorParser(col)),
-          //   transparent: true, // 투명하게 설정
-          //   opacity: 0.5, // 알파값 설정 (0.0 ~ 1.0)
-          // });
-
-          const cube = new THREE.Mesh(geometry, material);
-
-          scene.add(cube);
-
-          cube.position.set(
-            (colIndex + 1) * cubeSize - row.length / 2,
-            (rowIndex + 1) * cubeSize - matrix.value.length / 2,
-            -cubeSize * row.length/2
-          );
-          cubes.push(cube);
-        });
-      });
-    }
-  };
-  // 초기 큐브 생성
-  createCube();
-
-  // 큐브 업데이트 함수
-  function updateCubes() {
-    cubes.forEach((cube: THREE.Mesh) => {
-      scene.remove(cube);
-    });
-    cubes = [];
-    createCube();
-  }
-
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.addEventListener("change", () => {
-    renderer.render(scene, camera);
-  });
-
-  camera.position.z = 20;
-  camera.position.x = 10;
-  camera.position.y = 20;
-
-  // 매 프레임마다 랜더
-  function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
-  }
-  animate();
-
-  // 업데이트 구현
-  watch(matrix, () => {
-    updateCubes();
-  });
-});
+const matrix = ref<number[][][]>();
 
 onMounted(() => {
   socket.value = useSocket(`ws://localhost:${_socketPort}`);
-
   if (socket.value) {
-    socket.value.on("status", (message: number[][]) => {
+    socket.value.on("status", (message: number[][][]) => {
       matrix.value = message;
     });
   }
 });
 
-const userInput = ref<string>();
 
-watch(userInput, () => console.log(userInput.value));
+
+const gap = ref(1);
+const margin = ref(0.1);
+const selectedType = ref<"sphere" | "cube">("sphere");
+const isErrorOnly = ref(false);
+
+const errorOnlySelector = () => {
+  isErrorOnly.value = !isErrorOnly.value;
+};
+const typeSelector = () => {
+  if (selectedType.value === "sphere") {
+    selectedType.value = "cube";
+  } else selectedType.value = "sphere";
+};
+const gapSelector = (e: Event) => {
+  gap.value = Number(e.target.value);
+};
+const marginSelector = (e: Event) => {
+  margin.value = Number(e.target.value) / 10;
+};
 </script>
 
 <template>
   <h1>소켓 서버</h1>
   <div class="row">
-    <div ref="canvasRef"></div>
-    <div>
-      <div v-for="row in matrix" class="row">
-        <div
-          v-for="col in row"
-          :style="{
-            backgroundColor: ColorParser(Number(col)),
-          }"
-          class="col"
-        ></div>
-      </div>
+    <!-- <div class="serverSent-mesage-warpper">
+      <span>{{ matrix }}</span>
+    </div> -->
+
+    <Matrix3DGraph
+      :type="selectedType"
+      :matrix="matrix"
+      :canvas-size="{ width: 1600, height: 1000 }"
+      :cube-margin="margin"
+      :gap="gap"
+      :error-only="isErrorOnly"
+    />
+    <div class="col">
+      <button :onClick="typeSelector">
+        {{ selectedType === "sphere" ? "큐브 모델보기" : "구 모델보기" }}
+      </button>
+      <button :onClick="errorOnlySelector">
+        {{ isErrorOnly ? "모든 정보 보기" : "저품질 정보만 보기" }}
+      </button>
+      <label>
+        Gap
+        <input type="number" min="0" @change="gapSelector" :value="gap"
+      /></label>
+      <label>
+        margin
+        <input
+          type="number"
+          min="0"
+          @change="marginSelector"
+          :value="margin * 10"
+      /></label>
     </div>
   </div>
 </template>
@@ -136,9 +90,9 @@ watch(userInput, () => console.log(userInput.value));
   flex-direction: row;
 }
 .col {
-  padding: 1rem;
-  margin: 1px;
-  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .mesage-log-wrapper {
@@ -158,6 +112,11 @@ watch(userInput, () => console.log(userInput.value));
   border: 1px solid #ccc;
   list-style: none;
   justify-self: left;
+}
+.serverSent-mesage-warpper {
+  width: 500px;
+  height: 500px;
+  overflow-y: scroll;
 }
 .client-sent-message {
   width: 100%;
