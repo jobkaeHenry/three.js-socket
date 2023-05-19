@@ -9,7 +9,7 @@ const _socketPort = 3001;
 
 const io = new Server(_socketPort, {
   cors: {
-    origin: "http://127.0.0.1:5173",
+    origin: '*',
   },
 });
 const app = express();
@@ -34,11 +34,11 @@ io.on("connection", (socket) => {
   //
   console.log("누군가 접속함", socket.id);
   socket.emit("message", " 환영합니당 ");
-  socket.emit("status", matrixGenerator(12,12));
+  socket.emit("status", matrixGenerator(400,21,22));
 
   statusInterval = setInterval(() => {
-    socket.emit("status", matrixGenerator(12,12));
-  }, 1000);
+    socket.emit("status", matrixGenerator(400,21,22));
+  }, 10000);
 
   socket.on("message", (msg) => {
     setTimeout(() => {

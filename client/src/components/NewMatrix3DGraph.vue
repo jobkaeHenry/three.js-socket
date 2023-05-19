@@ -6,12 +6,11 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import ColorParser from "../utils/colorParser";
 import { MatrixType } from "../App.vue";
 
-const canvasRef = ref<HTMLElement | null>(null);
-
+// 프롭스
 const props = defineProps({
   matrix: {
     type: Object as PropType<MatrixType>,
-    default: [[[]]],
+    default: [],
     required: true,
   },
   canvasSize: {
@@ -32,6 +31,24 @@ const props = defineProps({
 const { matrix, canvasSize, gap, cubeSize, cubeMargin, type, errorOnly } =
   toRefs(props);
 
+const cameraRef = ref<null | THREE.PerspectiveCamera>(null);
+const canvasRef = ref<HTMLElement | null>(null);
+const controlsRef = ref<OrbitControls|null>(null)
+
+const initialCameraPosition = {
+  x: 10 * 3.5,
+  y: 10,
+  z: -8 * 3.5,
+};
+  const resetPosition = (
+    camera: THREE.PerspectiveCamera,
+    initialCameraPosition: { x: number; y: number; z: number }
+  ) => {
+    const { x, y, z } = initialCameraPosition;
+    camera.position.set(x, y, z);
+    controlsRef.value.target.set(0, 0, 0);
+  };
+
 onMounted(() => {
   const { width, height } = canvasSize.value;
   if (!canvasRef.value) {
@@ -39,31 +56,32 @@ onMounted(() => {
   }
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
+  cameraRef.value = camera;
 
   // 렌더러설정
-  const renderer = new THREE.WebGLRenderer();
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
   canvasRef.value.appendChild(renderer.domElement);
   renderer.setSize(width, height);
 
   scene.background = new THREE.Color(0x222222);
 
-  scene.add(new THREE.AmbientLight(0xeeeeee));
-  const light = new THREE.SpotLight(0xffffff, 0.3);
-  light.position.set(50, 50, 50);
+  scene.add(new THREE.AmbientLight(0xeeeeee, 8));
+  const light = new THREE.PointLight(0xffffff, 1);
+  light.position.set(50, 30, 40);
+
   scene.add(light);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.addEventListener("change", () => {
+
+  controlsRef.value = new OrbitControls(camera, renderer.domElement, {});
+
+  controlsRef.value.addEventListener("change", () => {
     renderer.render(scene, camera);
   });
 
-  // 상수 말고 계산되게 해야함
-  camera.position.z = -8 * 3.5;
-  camera.position.x = 10 * 3.5;
-  camera.position.y = 10;
+  const initialDirection = new THREE.Vector3(0, 0, 0);
+  camera.lookAt(initialDirection);
 
-  // camera.position.x = -15;
-  // camera.position.y = 25;
+  resetPosition(camera, initialCameraPosition);
 
   let cubes: THREE.Mesh[] = [];
 
@@ -92,42 +110,35 @@ onMounted(() => {
         );
         break;
     }
+    const min = 21;
+    const max = 22;
+    const canvasMin = 20;
 
     if (matrix.value) {
-      matrix.value.map((layer, layerIndex) => {
-        layer.map((row, rowIndex) => {
-          row.map((col, colIndex) => {
-            const material = new THREE.MeshMatcapMaterial({
-              color: new THREE.Color().setStyle(
-                ColorParser(col, errorOnly.value).color
-              ),
-              transparent: true, // 투명하게 설정
-              opacity: ColorParser(col, errorOnly.value).opacity, // 알파값 설정 (0.0 ~ 1.0)
-            });
-
-            const cube = new THREE.Mesh(geometry, material);
-
-            scene.add(cube);
-
-            cube.position.set(
-              // x좌표
-              colIndex * (cubeSize.value + cubeMargin.value) -
-                (((cubeSize.value + cubeMargin.value) / 2) * row.length -
-                  cubeSize.value / 2) +
-                cubeMargin.value,
-              // y좌표
-              ((cubeSize.value + cubeMargin.value) / 2) * layer.length -
-                cubeSize.value / 2 -
-                rowIndex * (cubeSize.value + cubeMargin.value) +
-                cubeMargin.value,
-              // z좌표
-              ((cubeSize.value + gap.value) / 2) * matrix.value.length +
-                cubeSize.value -
-                (layerIndex + 1) * (cubeSize.value + gap.value)
-            );
-            cubes.push(cube);
-          });
+      matrix.value.map((data) => {
+        const material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setStyle(
+            ColorParser(data.value, errorOnly.value).color
+          ),
+          transparent: true, // 투명하게 설정
+          opacity: ColorParser(data.value, errorOnly.value).opacity, // 알파값 설정 (0.0 ~ 1.0)
+          metalness: 0.9,
+          roughness: 0.5,
         });
+
+        const cube = new THREE.Mesh(geometry, material);
+
+        scene.add(cube);
+
+        cube.position.set(
+          // x좌표
+          (max - data.longitude) * 10 - min + canvasMin,
+          // y좌표
+          (max - data.altitude) * 10 - min + canvasMin,
+          // z좌표
+          (max - data.latitude) * 10 - min + canvasMin
+        );
+        cubes.push(cube);
       });
     }
   };
@@ -136,7 +147,7 @@ onMounted(() => {
   const generateLine = () => {
     const material = new THREE.LineBasicMaterial({
       color: new THREE.Color().setStyle("orange"),
-      linewidth: 1,
+      linewidth: 2,
       linecap: "round",
       linejoin: "round",
     });
@@ -187,7 +198,7 @@ onMounted(() => {
   // 매 프레임마다 랜더
   function animate() {
     requestAnimationFrame(animate);
-    controls.update();
+    controlsRef.value.update();
     renderer.render(scene, camera);
   }
   animate();
@@ -204,6 +215,15 @@ onMounted(() => {
 
 <template>
   <div ref="canvasRef"></div>
+  <button
+    @click="
+      () => {
+        if (cameraRef) resetPosition(cameraRef, initialCameraPosition);
+      }
+    "
+  >
+    초기화
+  </button>
 </template>
 
 <style lang="scss" scoped></style>
