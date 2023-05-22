@@ -3,8 +3,8 @@ import { PropType, onMounted, ref, toRefs, watch } from "vue";
 import * as THREE from "three";
 // @ts-expect-error
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
-import ColorParser from "../utils/colorParser";
-import { MatrixType } from "../App.vue";
+import ColorParser from "../../utils/colorParser";
+import { MatrixType } from "../../App.vue";
 
 const canvasRef = ref<HTMLElement | null>(null);
 

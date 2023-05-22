@@ -3,8 +3,17 @@ import { PropType, onMounted, ref, toRefs, watch } from "vue";
 import * as THREE from "three";
 // @ts-expect-error
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
-import ColorParser from "../utils/colorParser";
-import { MatrixType } from "../App.vue";
+import ColorParser from "../../utils/colorParser";
+import { MatrixType } from "../../App.vue";
+import { resetCameraPosition } from "./utils/cameraControl";
+import { geometrySelector } from "./utils/geometry";
+import { getRelativePosition } from "./utils/entity";
+
+interface Vector3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 // 프롭스
 const props = defineProps({
@@ -26,6 +35,14 @@ const props = defineProps({
     default: "sphere",
   },
   errorOnly: { type: Object as PropType<boolean>, default: false },
+  initialCameraPosition: {
+    type: Object as PropType<Vector3>,
+    default: {
+      x: -50,
+      y: 20,
+      z: 40,
+    },
+  },
 });
 
 const { matrix, canvasSize, gap, cubeSize, cubeMargin, type, errorOnly } =
@@ -33,21 +50,7 @@ const { matrix, canvasSize, gap, cubeSize, cubeMargin, type, errorOnly } =
 
 const cameraRef = ref<null | THREE.PerspectiveCamera>(null);
 const canvasRef = ref<HTMLElement | null>(null);
-const controlsRef = ref<OrbitControls|null>(null)
-
-const initialCameraPosition = {
-  x: 10 * 3.5,
-  y: 10,
-  z: -8 * 3.5,
-};
-  const resetPosition = (
-    camera: THREE.PerspectiveCamera,
-    initialCameraPosition: { x: number; y: number; z: number }
-  ) => {
-    const { x, y, z } = initialCameraPosition;
-    camera.position.set(x, y, z);
-    controlsRef.value.target.set(0, 0, 0);
-  };
+const controlsRef = ref<OrbitControls | null>(null);
 
 onMounted(() => {
   const { width, height } = canvasSize.value;
@@ -55,8 +58,7 @@ onMounted(() => {
     return;
   }
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
-  cameraRef.value = camera;
+  cameraRef.value = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
 
   // 렌더러설정
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -71,48 +73,33 @@ onMounted(() => {
 
   scene.add(light);
 
-
-  controlsRef.value = new OrbitControls(camera, renderer.domElement, {});
+  controlsRef.value = new OrbitControls(
+    cameraRef.value,
+    renderer.domElement,
+    {}
+  );
 
   controlsRef.value.addEventListener("change", () => {
-    renderer.render(scene, camera);
+    if (cameraRef.value) renderer.render(scene, cameraRef.value);
   });
 
-  const initialDirection = new THREE.Vector3(0, 0, 0);
-  camera.lookAt(initialDirection);
+  // const initialDirection = new THREE.Vector3(10, 0, 0);
+  // cameraRef.value.lookAt(initialDirection);
 
-  resetPosition(camera, initialCameraPosition);
+  resetCameraPosition(
+    cameraRef.value,
+    controlsRef.value,
+    props.initialCameraPosition
+  );
 
   let cubes: THREE.Mesh[] = [];
 
   const generateCube = () => {
     /** 형태 */
-    let geometry: THREE.SphereGeometry | THREE.BoxGeometry;
+    let geometry = geometrySelector(type.value, cubeSize.value);
 
-    switch (type.value) {
-      case "cube":
-        geometry = new THREE.BoxGeometry(
-          cubeSize.value,
-          cubeSize.value,
-          cubeSize.value
-        );
-
-        break;
-      case "sphere":
-        geometry = new THREE.SphereGeometry(cubeSize.value * 0.5, 16, 16);
-        break;
-
-      default:
-        geometry = new THREE.BoxGeometry(
-          cubeSize.value,
-          cubeSize.value,
-          cubeSize.value
-        );
-        break;
-    }
-    const min = 21;
-    const max = 22;
-    const canvasMin = 20;
+    const min = -180;
+    const max = 180;
 
     if (matrix.value) {
       matrix.value.map((data) => {
@@ -129,14 +116,27 @@ onMounted(() => {
         const cube = new THREE.Mesh(geometry, material);
 
         scene.add(cube);
+        cube.addEventListener("mouseEnter", () => console.log(cube.position));
 
         cube.position.set(
           // x좌표
-          (max - data.longitude) * 10 - min + canvasMin,
+          getRelativePosition(
+            data.longitude,
+            { min: min, max: max },
+            { min: -20, max: 0 }
+          ),
           // y좌표
-          (max - data.altitude) * 10 - min + canvasMin,
+          getRelativePosition(
+            data.altitude,
+            { min: 300, max: 500 },
+            { min: 0, max: 20 }
+          ),
           // z좌표
-          (max - data.latitude) * 10 - min + canvasMin
+          getRelativePosition(
+            data.latitude,
+            { min: min, max: max },
+            { min: 0, max: 40 }
+          )
         );
         cubes.push(cube);
       });
@@ -153,8 +153,8 @@ onMounted(() => {
     });
 
     const zAxisPoints: THREE.Vector3[] = [];
-    zAxisPoints.push(new THREE.Vector3(-10, -10, -20));
-    zAxisPoints.push(new THREE.Vector3(-10, -10, 20));
+    zAxisPoints.push(new THREE.Vector3(0, 0, 0));
+    zAxisPoints.push(new THREE.Vector3(0, 0, 40));
 
     const zAxis = new THREE.BufferGeometry().setFromPoints(zAxisPoints);
 
@@ -163,8 +163,8 @@ onMounted(() => {
     scene.add(zLine);
 
     const yAxisPoints: THREE.Vector3[] = [];
-    yAxisPoints.push(new THREE.Vector3(-10, -10, 20));
-    yAxisPoints.push(new THREE.Vector3(-10, 10, 20));
+    yAxisPoints.push(new THREE.Vector3(0, 0, 0));
+    yAxisPoints.push(new THREE.Vector3(0, 20, 0));
 
     const yAxis = new THREE.BufferGeometry().setFromPoints(yAxisPoints);
 
@@ -174,8 +174,8 @@ onMounted(() => {
     scene.add(yLine);
 
     const xAxisPoints: THREE.Vector3[] = [];
-    xAxisPoints.push(new THREE.Vector3(-10, -10, 20));
-    xAxisPoints.push(new THREE.Vector3(10, -10, 20));
+    xAxisPoints.push(new THREE.Vector3(-20, 0, 0));
+    xAxisPoints.push(new THREE.Vector3(0, 0, 0));
 
     const xAxis = new THREE.BufferGeometry().setFromPoints(xAxisPoints);
 
@@ -197,9 +197,11 @@ onMounted(() => {
 
   // 매 프레임마다 랜더
   function animate() {
-    requestAnimationFrame(animate);
-    controlsRef.value.update();
-    renderer.render(scene, camera);
+    if (cameraRef.value) {
+      requestAnimationFrame(animate);
+      controlsRef.value.update();
+      renderer.render(scene, cameraRef.value);
+    }
   }
   animate();
 
@@ -218,7 +220,12 @@ onMounted(() => {
   <button
     @click="
       () => {
-        if (cameraRef) resetPosition(cameraRef, initialCameraPosition);
+        if (cameraRef && controlsRef)
+          resetCameraPosition(
+            cameraRef,
+            controlsRef,
+            props.initialCameraPosition
+          );
       }
     "
   >
